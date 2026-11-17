@@ -118,6 +118,8 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 .wd:active{background:#ffe58a;color:#222}
 .kw{color:#2c8a3a;font-weight:700;text-decoration:underline}
 @media (prefers-color-scheme:dark){.kw{color:#6fdc80}.cue.cur .kw{color:#2c8a3a}}
+.nowbar{padding:8px 12px;font-size:1.15rem;line-height:1.8;max-height:26vh;overflow:auto;background:var(--surface);border-top:1px solid var(--line)}
+.nowbar.hintx{color:var(--muted);font-size:.9rem;line-height:1.5}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -150,7 +152,7 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 <div class="row" style="margin-top:0"><button class="btn f" data-v="sub">套用字幕</button><button class="btn ghost" data-v="file">選擇字幕檔</button></div>
 <p class="hint">點字幕裡不熟的英文單字，就能查意思並加入果園。</p>
 </div></details>
-<div class="vsticky" id="vbox" hidden><div class="vp16"><div id="yt"></div></div><label class="autol"><input type="checkbox" id="auto" checked>自動捲動到目前這句</label></div>
+<div class="vsticky" id="vbox" hidden><div class="vp16"><div id="yt"></div></div><div class="nowbar hintx" id="nowbar" data-i="-1">字幕會顯示在這裡，點單字即可加入</div><label class="autol"><input type="checkbox" id="auto" checked>自動捲動到目前這句</label></div>
 <div id="tr"><div class="panel">載入影片並貼上字幕後，字幕會顯示在這裡。</div></div>
 </div>
 <input type="file" id="fileSub" accept=".srt,.vtt,.txt,text/plain" hidden>
@@ -413,13 +415,22 @@ if(YTP&&YTP.loadVideoById){YTP.loadVideoById(id);return}
 YTP=new YT.Player("yt",{width:"100%",height:"100%",videoId:id,playerVars:{playsinline:1,rel:0},events:{onReady:startTick}});
 });
 }
+function setBar(i){
+var b=$("nowbar");
+if(i<0||!cues[i]){b.className="nowbar hintx";b.dataset.i="-1";b.textContent="字幕會顯示在這裡，點單字即可加入";return}
+var lib={};words.forEach(function(x){lib[x.w.toLowerCase()]=1});
+b.className="nowbar";b.dataset.i=i;
+b.innerHTML=cues[i].t.split(/([A-Za-z][A-Za-z'\u2019-]*)/).map(function(p,j){
+if(j%2){var n=norm(p);return'<span class="wd'+(lib[n]?" kw":"")+'" data-w="'+esc(n)+'">'+esc(p)+'</span>'}
+return esc(p)}).join("");
+}
 function startTick(){
 clearInterval(tick);
 tick=setInterval(function(){
 if(!YTP||!YTP.getCurrentTime||!cues.length||cues[0].s<0)return;
 var t=YTP.getCurrentTime(),i=-1;
 for(var k=0;k<cues.length;k++){if(cues[k].s<=t+0.15)i=k;else break}
-if(i!==curI){curI=i;var old=document.querySelector(".cue.cur");if(old)old.classList.remove("cur");
+if(i!==curI){curI=i;setBar(i);var old=document.querySelector(".cue.cur");if(old)old.classList.remove("cur");
 var el=document.querySelector('.cue[data-i="'+i+'"]');
 if(el){el.classList.add("cur");if($("auto").checked)el.scrollIntoView({block:"center",behavior:"smooth"})}}
 },300);
@@ -427,7 +438,7 @@ if(el){el.classList.add("cur");if($("auto").checked)el.scrollIntoView({block:"ce
 function seek(t){try{YTP.seekTo(t,true);YTP.playVideo()}catch(e){}}
 function applySub(){
 var t=$("sub").value;if(!t.trim()){toast("請先貼上字幕或選擇字幕檔");return}
-cues=parseSub(t);curI=-1;renderTr();vsave();
+cues=parseSub(t);curI=-1;setBar(-1);renderTr();vsave();
 toast(cues.length?"已套用 "+cues.length+" 句字幕":"沒有讀到字幕內容");
 if(vid&&cues.length)$("vset").open=false;
 }
@@ -447,7 +458,7 @@ var t=(j.responseData&&j.responseData.translatedText)||"";
 return/MYMEMORY|QUERY LENGTH|INVALID/i.test(t)?"":t}catch(e){return""}
 }
 function openWord(el){
-var w=el.dataset.w,i=+el.closest(".cue").dataset.i,sent=cues[i].t;VW={w:w,sent:sent};
+var w=el.dataset.w,i=+el.closest("[data-i]").dataset.i,sent=cues[i].t;VW={w:w,sent:sent};
 try{YTP.pauseVideo()}catch(e){}
 var known=words.some(function(x){return x.w.toLowerCase()===w});
 sheet('<h2>'+esc(w)+'</h2><p class="mean" style="font-style:italic">'+esc(sent)+'</p><input id="vm" placeholder="中文意思（可修改）"><p class="hint" id="vtr">翻譯中…</p><div class="row"><button class="btn ghost" data-vsay="1" aria-label="發音">🔊</button><button class="btn f" data-vadd="1">'+(known?"已在果園":"加入單字果園")+'</button></div><div class="row"><button class="btn ghost f" data-vclose="1">繼續播放</button></div>');
