@@ -104,6 +104,20 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 [data-story]{display:none!important}
 .io{padding:14px 12px 0;flex-wrap:wrap}
 .io .btn{padding:9px 14px;font-size:.9rem}
+.vsticky{position:sticky;top:0;z-index:4;background:var(--surface)}
+.vp16{aspect-ratio:16/9;background:#000}.vp16 iframe{width:100%;height:100%;display:block}
+.autol{display:block;padding:4px 12px;font-size:.85rem;color:var(--muted)}
+.autol input{width:auto;margin:0 6px 0 0;padding:0}
+.vset{margin:12px;background:var(--surface);border-radius:14px;padding:10px 14px}
+.vset summary{cursor:pointer;font-weight:700}
+.cue{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
+.cue.cur{background:#fff3b0;color:#222}
+.sk{border:0;background:var(--accent);color:var(--accent-ink);border-radius:50%;width:28px;height:28px;flex:none;font-size:.7rem;cursor:pointer;margin-top:3px}
+.ct{line-height:1.9;font-size:1.05rem}
+.wd{cursor:pointer;border-radius:4px;padding:0 1px}
+.wd:active{background:#ffe58a;color:#222}
+.kw{color:#2c8a3a;font-weight:700;text-decoration:underline}
+@media (prefers-color-scheme:dark){.kw{color:#6fdc80}.cue.cur .kw{color:#2c8a3a}}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -127,10 +141,24 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 <ul id="list" style="padding:0 12px"></ul>
 <div class="panel" id="lEmpty" hidden>還沒有單字。</div>
 </div>
+<div id="vVideo" hidden>
+<details class="vset" id="vset" open><summary>影片與字幕設定</summary>
+<div style="margin-top:10px">
+<input id="vurl" placeholder="貼上 YouTube 連結" inputmode="url" autocapitalize="none">
+<button class="btn" data-v="load" style="width:100%;margin-bottom:10px">載入影片</button>
+<textarea id="sub" placeholder="貼上字幕文字（YouTube「顯示轉錄稿」複製的內容，或 .srt / .vtt 的內容）" style="min-height:110px"></textarea>
+<div class="row" style="margin-top:0"><button class="btn f" data-v="sub">套用字幕</button><button class="btn ghost" data-v="file">選擇字幕檔</button></div>
+<p class="hint">點字幕裡不熟的英文單字，就能查意思並加入果園。</p>
+</div></details>
+<div class="vsticky" id="vbox" hidden><div class="vp16"><div id="yt"></div></div><label class="autol"><input type="checkbox" id="auto" checked>自動捲動到目前這句</label></div>
+<div id="tr"><div class="panel">載入影片並貼上字幕後，字幕會顯示在這裡。</div></div>
+</div>
+<input type="file" id="fileSub" accept=".srt,.vtt,.txt,text/plain" hidden>
 </div>
 <nav>
 <button id="nF" aria-selected="true"><i>🌳</i>果園</button>
 <button id="nL" aria-selected="false"><i>📚</i>字庫</button>
+<button id="nV" aria-selected="false"><i>🎬</i>影片</button>
 </nav>
 <div id="modal"></div>
 <div id="quiz" hidden>
@@ -338,17 +366,119 @@ r.onload=function(){if(k==="imp")importBackup(String(r.result));else importCsv(S
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
 
-function tab(n){
-$("vField").hidden=n!=="f";$("vList").hidden=n!=="l";
-$("nF").setAttribute("aria-selected",n==="f");$("nL").setAttribute("aria-selected",n==="l");
-if(n==="l")renderList();else render();
+/* video */
+var cues=[],YTP=null,vInit=false,tick=null,curI=-1,VW=null,vid="";
+function vsave(){try{localStorage.setItem("vocab-video",JSON.stringify({vid:vid,sub:$("sub").value,url:$("vurl").value}))}catch(e){}}
+function ts(h,m,s,ms){return(h?parseInt(h,10):0)*3600+(+m)*60+(+s)+parseFloat("0."+(ms||"0"))}
+function parseSub(t){
+t=t.replace(/^\uFEFF/,"").replace(/\r/g,"");var out=[],i;
+var re=/(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})\s*-->\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[.,](\d{1,3})/;
+t.split(/\n\s*\n/).forEach(function(b){var ls=b.split("\n"),k=-1,m=null;
+for(i=0;i<ls.length;i++){m=ls[i].match(re);if(m){k=i;break}}
+if(k<0)return;
+var txt=ls.slice(k+1).join(" ").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
+if(txt)out.push({s:ts(m[1],m[2],m[3],m[4]),e:ts(m[5],m[6],m[7],m[8]),t:txt})});
+if(out.length)return out;
+var only=/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$/,inl=/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s+(\S.*)$/,cur=null;
+t.split("\n").forEach(function(l){l=l.trim();if(!l)return;
+var m=l.match(only),m2=l.match(inl);
+if(m){cur={s:ts(m[1],m[2],m[3],"0"),e:-1,t:""};out.push(cur)}
+else if(m2){cur={s:ts(m2[1],m2[2],m2[3],"0"),e:-1,t:m2[4]};out.push(cur)}
+else if(cur)cur.t+=(cur.t?" ":"")+l});
+out=out.filter(function(c){return c.t});
+if(out.length){for(i=0;i<out.length-1;i++)out[i].e=out[i+1].s;out[out.length-1].e=out[out.length-1].s+5;return out}
+t.split("\n").forEach(function(l){l=l.trim();if(l)out.push({s:-1,e:-1,t:l})});
+return out;
 }
-$("nF").onclick=function(){tab("f")};$("nL").onclick=function(){tab("l")};
+function norm(p){return p.toLowerCase().replace(/\u2019/g,"'").replace(/^['-]+|['-]+$/g,"")}
+function renderTr(){
+var lib={};words.forEach(function(x){lib[x.w.toLowerCase()]=1});
+if(!cues.length){$("tr").innerHTML='<div class="panel">載入影片並貼上字幕後，字幕會顯示在這裡。</div>';return}
+$("tr").innerHTML=cues.map(function(c,i){
+var h=c.t.split(/([A-Za-z][A-Za-z'\u2019-]*)/).map(function(p,j){
+if(j%2){var n=norm(p);return'<span class="wd'+(lib[n]?" kw":"")+'" data-w="'+esc(n)+'">'+esc(p)+'</span>'}
+return esc(p)}).join("");
+return'<div class="cue" data-i="'+i+'">'+(c.s>=0?'<button class="sk" data-seek="'+c.s+'" aria-label="跳到這句">▶</button>':"")+'<div class="ct">'+h+'</div></div>'}).join("");
+}
+function vidId(u){var m=u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})/);return m?m[1]:(/^[A-Za-z0-9_-]{11}$/.test(u)?u:null)}
+function loadYT(cb){
+if(window.YT&&YT.Player){cb();return}
+window.onYouTubeIframeAPIReady=cb;
+if(!$("ytapi")){var sc=document.createElement("script");sc.id="ytapi";sc.src="https://www.youtube.com/iframe_api";sc.onerror=function(){toast("無法載入 YouTube 播放器，請確認網路")};document.head.appendChild(sc)}
+}
+function loadVideo(id){
+$("vbox").hidden=false;
+loadYT(function(){
+if(YTP&&YTP.loadVideoById){YTP.loadVideoById(id);return}
+YTP=new YT.Player("yt",{width:"100%",height:"100%",videoId:id,playerVars:{playsinline:1,rel:0},events:{onReady:startTick}});
+});
+}
+function startTick(){
+clearInterval(tick);
+tick=setInterval(function(){
+if(!YTP||!YTP.getCurrentTime||!cues.length||cues[0].s<0)return;
+var t=YTP.getCurrentTime(),i=-1;
+for(var k=0;k<cues.length;k++){if(cues[k].s<=t+0.15)i=k;else break}
+if(i!==curI){curI=i;var old=document.querySelector(".cue.cur");if(old)old.classList.remove("cur");
+var el=document.querySelector('.cue[data-i="'+i+'"]');
+if(el){el.classList.add("cur");if($("auto").checked)el.scrollIntoView({block:"center",behavior:"smooth"})}}
+},300);
+}
+function seek(t){try{YTP.seekTo(t,true);YTP.playVideo()}catch(e){}}
+function applySub(){
+var t=$("sub").value;if(!t.trim()){toast("請先貼上字幕或選擇字幕檔");return}
+cues=parseSub(t);curI=-1;renderTr();vsave();
+toast(cues.length?"已套用 "+cues.length+" 句字幕":"沒有讀到字幕內容");
+if(vid&&cues.length)$("vset").open=false;
+}
+function vAct(k){
+if(k==="load"){var id=vidId($("vurl").value.trim());if(!id){toast("請貼上有效的 YouTube 連結");return}
+vid=id;vsave();loadVideo(id);if(cues.length)$("vset").open=false}
+else if(k==="sub")applySub();
+else if(k==="file"){var f=$("fileSub");f.value="";f.click()}
+}
+$("fileSub").addEventListener("change",function(){
+var f=this.files[0];if(!f)return;var r=new FileReader();
+r.onload=function(){$("sub").value=String(r.result);applySub()};r.readAsText(f);
+});
+async function tr(q){
+try{var r=await fetch("https://api.mymemory.translated.net/get?q="+encodeURIComponent(q)+"&langpair=en|zh-TW");var j=await r.json();
+var t=(j.responseData&&j.responseData.translatedText)||"";
+return/MYMEMORY|QUERY LENGTH|INVALID/i.test(t)?"":t}catch(e){return""}
+}
+function openWord(el){
+var w=el.dataset.w,i=+el.closest(".cue").dataset.i,sent=cues[i].t;VW={w:w,sent:sent};
+try{YTP.pauseVideo()}catch(e){}
+var known=words.some(function(x){return x.w.toLowerCase()===w});
+sheet('<h2>'+esc(w)+'</h2><p class="mean" style="font-style:italic">'+esc(sent)+'</p><input id="vm" placeholder="中文意思（可修改）"><p class="hint" id="vtr">翻譯中…</p><div class="row"><button class="btn ghost" data-vsay="1" aria-label="發音">🔊</button><button class="btn f" data-vadd="1">'+(known?"已在果園":"加入單字果園")+'</button></div><div class="row"><button class="btn ghost f" data-vclose="1">繼續播放</button></div>');
+speak(w);
+tr(w).then(function(m){if(VW&&VW.w===w&&$("vm")&&!$("vm").value)$("vm").value=m});
+tr(sent).then(function(m){if(VW&&VW.w===w&&$("vtr"))$("vtr").textContent=m?"整句："+m:"（翻譯失敗，可自己輸入意思）"});
+}
+function vAdd(){
+var m=$("vm").value.trim();if(!m){toast("請輸入中文意思");return}
+if(words.some(function(x){return x.w.toLowerCase()===VW.w})){toast("這個單字已經在單字庫了");return}
+var g=0;while(inG(g).length>=10)g++;
+words.push({id:Date.now(),w:VW.w,m:m,e:VW.sent,g:g});save();
+document.querySelectorAll('.wd[data-w="'+VW.w+'"]').forEach(function(x){x.classList.add("kw")});
+toast("已加入「"+VW.w+"」→ 地塊 "+(g+1));vResume();
+}
+function vResume(){closeSheet();try{YTP.playVideo()}catch(e){}}
+
+function tab(n){
+$("vField").hidden=n!=="f";$("vList").hidden=n!=="l";$("vVideo").hidden=n!=="v";
+$("nF").setAttribute("aria-selected",n==="f");$("nL").setAttribute("aria-selected",n==="l");$("nV").setAttribute("aria-selected",n==="v");
+if(n!=="v"){try{YTP.pauseVideo()}catch(e){}}
+if(n==="l")renderList();else if(n==="f")render();
+if(n==="v"&&!vInit){vInit=true;if(vid)loadVideo(vid)}
+}
+$("nF").onclick=function(){tab("f")};$("nL").onclick=function(){tab("l")};$("nV").onclick=function(){tab("v")};
 $("addOpen").onclick=openAdd;$("q").addEventListener("input",renderList);
 $("qx").onclick=function(){if(confirm("離開練習？這次的進度不會計算。"))quitQuiz()};
 document.addEventListener("click",function(e){
 if(e.target.id==="bg"){closeSheet();return}
 var sg=e.target.closest("[data-sn]");if(sg&&ST){clearTimeout(TM);ST.i++;scene();return}
+var wd=e.target.closest(".wd");if(wd){openWord(wd);return}
 var b=e.target.closest("button");if(!b)return;var d=b.dataset;
 if(d.g&&!d.del&&b.classList.contains("tile"))openPlot(+d.g);
 else if(d.x)closeSheet();
@@ -362,9 +492,10 @@ else if(d.sp)speak(S.queue[0].w.w);
 else if(d.spo)speak(S.queue[0].opts[+d.spo].w);
 else if(d.o!==undefined&&S)pick(+d.o);
 else if(d.nx)next();
-else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);
+else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.seek!==undefined)seek(+d.seek);
 });
 load();render();
+try{var sv=JSON.parse(localStorage.getItem("vocab-video")||"null");if(sv){vid=sv.vid||"";$("vurl").value=sv.url||"";$("sub").value=sv.sub||"";if($("sub").value.trim()){cues=parseSub($("sub").value);renderTr()}}}catch(e){}
 })();
 </script>
 </body>
