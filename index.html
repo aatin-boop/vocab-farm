@@ -381,11 +381,10 @@ if(k<0)return;
 var txt=ls.slice(k+1).join(" ").replace(/<[^>]+>/g,"").replace(/\s+/g," ").trim();
 if(txt)out.push({s:ts(m[1],m[2],m[3],m[4]),e:ts(m[5],m[6],m[7],m[8]),t:txt})});
 if(out.length)return out;
-var only=/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$/,inl=/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s+(\S.*)$/,cur=null;
+var tre=/^[\(\[]?(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[\)\]]?(?:\s+(\S.*))?$/,cur=null;
 t.split("\n").forEach(function(l){l=l.trim();if(!l)return;
-var m=l.match(only),m2=l.match(inl);
-if(m){cur={s:ts(m[1],m[2],m[3],"0"),e:-1,t:""};out.push(cur)}
-else if(m2){cur={s:ts(m2[1],m2[2],m2[3],"0"),e:-1,t:m2[4]};out.push(cur)}
+var m=l.match(tre);
+if(m){cur={s:ts(m[1],m[2],m[3],"0"),e:-1,t:m[4]||""};out.push(cur)}
 else if(cur)cur.t+=(cur.t?" ":"")+l});
 out=out.filter(function(c){return c.t});
 if(out.length){for(i=0;i<out.length-1;i++)out[i].e=out[i+1].s;out[out.length-1].e=out[out.length-1].s+5;return out}
