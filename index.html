@@ -451,20 +451,36 @@ $("fileSub").addEventListener("change",function(){
 var f=this.files[0];if(!f)return;var r=new FileReader();
 r.onload=function(){$("sub").value=String(r.result);applySub()};r.readAsText(f);
 });
-async function tr(q){
+var quotaHit=false;
+async function trM(q){
+if(quotaHit||q.length>450)return"";
 try{var r=await fetch("https://api.mymemory.translated.net/get?q="+encodeURIComponent(q)+"&langpair=en|zh-TW");var j=await r.json();
 var t=(j.responseData&&j.responseData.translatedText)||"";
+if(/MYMEMORY WARNING|USED ALL/i.test(t)||j.quotaFinished){quotaHit=true;return""}
 return/MYMEMORY|QUERY LENGTH|INVALID/i.test(t)?"":t}catch(e){return""}
 }
+async function trG(q){
+try{var r=await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-TW&dt=t&q="+encodeURIComponent(q));var j=await r.json();
+return(j[0]||[]).map(function(x){return x[0]||""}).join("")}catch(e){return""}
+}
+async function trAny(q){var a=await trM(q);return a||await trG(q)}
 function openWord(el){
 var w=el.dataset.w,i=+el.closest("[data-i]").dataset.i,sent=cues[i].t;VW={w:w,sent:sent};
 try{YTP.pauseVideo()}catch(e){}
 var known=words.some(function(x){return x.w.toLowerCase()===w});
-sheet('<h2>'+esc(w)+'</h2><p class="mean" style="font-style:italic">'+esc(sent)+'</p><input id="vm" placeholder="中文意思（可修改）"><p class="hint" id="vtr">翻譯中…</p><div class="row"><button class="btn ghost" data-vsay="1" aria-label="發音">🔊</button><button class="btn f" data-vadd="1">'+(known?"已在果園":"加入單字果園")+'</button></div><div class="row"><button class="btn ghost f" data-vclose="1">繼續播放</button></div>');
+sheet('<h2>'+esc(w)+'</h2><p class="mean" style="font-style:italic">'+esc(sent)+'</p><input id="vm" placeholder="中文意思（可修改）"><p class="hint" id="vtr">翻譯中…</p><p class="mean" id="vts" hidden></p><div class="row"><button class="btn ghost" data-vsay="1" aria-label="發音">🔊</button><button class="btn f" data-vadd="1">'+(known?"已在果園":"加入單字果園")+'</button></div><div class="row"><button class="btn ghost f" data-vtrs="1">翻譯整句</button><button class="btn ghost f" data-vgo="1">用 Google 翻譯查</button></div><div class="row"><button class="btn ghost f" data-vclose="1">繼續播放</button></div>');
 speak(w);
-tr(w).then(function(m){if(VW&&VW.w===w&&$("vm")&&!$("vm").value)$("vm").value=m});
-tr(sent).then(function(m){if(VW&&VW.w===w&&$("vtr"))$("vtr").textContent=m?"整句："+m:"（翻譯失敗，可自己輸入意思）"});
+trAny(w).then(function(m){
+if(!(VW&&VW.w===w&&$("vm")))return;
+if(m){if(!$("vm").value)$("vm").value=m;$("vtr").textContent="已自動翻譯，可自行修改"}
+else $("vtr").textContent=(quotaHit?"今日免費翻譯額度已用完，":"自動翻譯失敗，")+"請按「用 Google 翻譯查」，或自己輸入意思";
+});
 }
+function vTrs(){
+var el=$("vts");el.hidden=false;el.textContent="翻譯中…";var w=VW.w;
+trAny(VW.sent).then(function(m){if(VW&&VW.w===w&&$("vts"))$("vts").textContent=m?"整句："+m:"整句翻譯失敗，可複製句子到 Google 翻譯"});
+}
+function vGo(){window.open("https://translate.google.com/?sl=en&tl=zh-TW&text="+encodeURIComponent(VW.w)+"&op=translate","_blank")}
 function vAdd(){
 var m=$("vm").value.trim();if(!m){toast("請輸入中文意思");return}
 if(words.some(function(x){return x.w.toLowerCase()===VW.w})){toast("這個單字已經在單字庫了");return}
@@ -502,7 +518,7 @@ else if(d.sp)speak(S.queue[0].w.w);
 else if(d.spo)speak(S.queue[0].opts[+d.spo].w);
 else if(d.o!==undefined&&S)pick(+d.o);
 else if(d.nx)next();
-else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.seek!==undefined)seek(+d.seek);
+else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.vtrs)vTrs();else if(d.vgo)vGo();else if(d.seek!==undefined)seek(+d.seek);
 });
 load();render();
 try{var sv=JSON.parse(localStorage.getItem("vocab-video")||"null");if(sv){vid=sv.vid||"";$("vurl").value=sv.url||"";$("sub").value=sv.sub||"";if($("sub").value.trim()){cues=parseSub($("sub").value);renderTr()}}}catch(e){}
