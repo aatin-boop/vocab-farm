@@ -122,6 +122,8 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 .nowbar.hintx{color:var(--muted);font-size:.9rem;line-height:1.5}
 .cz{color:var(--muted);font-size:.85rem;line-height:1.4;margin-top:2px}
 .cue.cur .cz{color:#555}
+#qclip{aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;margin:0 auto 10px;width:min(100%,calc(28vh*1.78));flex:none}
+#qclip iframe{width:100%;height:100%;display:block}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -168,6 +170,7 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 <div id="quiz" hidden>
 <div class="qh"><button id="qx" aria-label="離開練習">✕</button><div id="qt"></div><span></span></div>
 <div class="qbar"><i id="qfill"></i></div>
+<div id="qclip" hidden><div id="qyt"></div></div>
 <div class="qcard" id="qcard"></div>
 <div class="qmas"><span id="mas">🐥</span></div>
 </div>
@@ -187,9 +190,9 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify({words:words,prog:pr
 function inG(g){return words.filter(function(x){return x.g===g})}
 function maxG(){var m=-1;words.forEach(function(x){if(x.g>m)m=x.g});return m}
 var warned=false;
-function speak(t,l){l=l||"en-US";
+function speak(t,l,r){l=l||"en-US";
 if(!("speechSynthesis" in window)||typeof SpeechSynthesisUtterance==="undefined"){if(!warned){warned=true;toast("這個瀏覽器不支援發音，請改用 Chrome 或 Safari 開啟")}return}
-try{var u=new SpeechSynthesisUtterance(t);u.lang=l;var vs=speechSynthesis.getVoices()||[];var v=vs.filter(function(x){return x.lang.toLowerCase().replace("_","-").indexOf(l.slice(0,2).toLowerCase())===0})[0];if(v)u.voice=v;
+try{var u=new SpeechSynthesisUtterance(t);u.lang=l;u.rate=r||1;var vs=speechSynthesis.getVoices()||[];var v=vs.filter(function(x){return x.lang.toLowerCase().replace("_","-").indexOf(l.slice(0,2).toLowerCase())===0})[0];if(v)u.voice=v;
 if(speechSynthesis.speaking)speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}
 }
 function toast(t){var d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(function(){d.remove()},1600)}
@@ -229,10 +232,40 @@ $("amsg").textContent="已加入「"+w+"」→ 地塊 "+(g+1)+"（"+inG(g).lengt
 function openPlot(g){
 var ws=inG(g),p=prog[g]||0;
 sheet('<h2>［ 地塊 '+(g+1)+' ］</h2>'+dots(p)+'<p class="mean">'+ws.length+'/10 個單字</p><ul class="wl">'+ws.map(function(x){return'<li><div class="t"><b>'+esc(x.w)+'</b> '+esc(x.m)+'</div><button class="ic" data-say="'+x.id+'" aria-label="發音">🔊</button><button class="ic" data-edit="'+x.id+'" data-g="'+g+'" aria-label="編輯">✏️</button><button class="ic" data-story="'+x.id+'" aria-label="諧音梗短劇">🎬</button><button class="ic" data-del="'+x.id+'" data-g="'+g+'" aria-label="刪除">🗑</button></li>'}).join("")+'</ul>'
-+'<div class="row">'+(p<MAX?'<button class="btn f" data-prac="'+g+'">開始練習</button>':'<button class="btn f" data-reset="'+g+'">重新種植</button>')+(ws.length<10?'<button class="btn ghost" data-addo="1">＋ 單字</button>':'')+'</div>');
++'<div class="row">'+(p<MAX?'<button class="btn f" data-prac="'+g+'">開始練習</button>':'<button class="btn f" data-reset="'+g+'">重新種植</button>')+(ws.length?'<button class="btn ghost f" data-lis="'+g+'">🎧 聽力練習</button>':'')+(ws.length<10?'<button class="btn ghost" data-addo="1">＋ 單字</button>':'')+'</div>');
 }
 
 /* quiz */
+var QP=null,QRATE=1;
+function nz(x){return String(x).toLowerCase().replace(/[^a-z]/g,"")}
+function escRe(x){return x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}
+function blankOf(w){var t=(w.c&&w.c.t)||w.e||"";var re=new RegExp("\\b"+escRe(w.w)+"\\b","ig");return re.test(t)?t.replace(re,"＿＿＿"):null}
+function clipOK(w){return!!(w.c&&w.c.v&&blankOf(w)!==null)}
+function pool(w,lis){var a=lis?["au2zh","zh2au","dict"]:["en2zh","au2zh","zh2en","zh2au","dict"];if(clipOK(w))a.push("clip");return a}
+function isLis(t){return["au2zh","zh2au","dict","clip"].indexOf(t)>-1}
+function lisScore(it,ok){if(!isLis(it.t))return;var w=it.w;w.lw=ok?Math.max(0,(w.lw||0)-1):(w.lw||0)+1;save()}
+function requeue(it){var alt=shuf(pool(it.w,S.lis).filter(function(t){return t!==it.t}))[0]||it.t;S.queue.splice(Math.min(S.queue.length,4),0,{k:"q",w:it.w,t:alt})}
+function stopClip(){try{QP.pauseVideo()}catch(e){}}
+function clipPlay(rate){
+var c=S.queue[0].w.c;if(!c)return;QRATE=rate;$("qclip").hidden=false;
+loadYT(function(){
+var a=Math.max(0,c.s-0.4),b=c.e+0.4;
+if(QP&&QP.loadVideoById){QP.loadVideoById({videoId:c.v,startSeconds:a,endSeconds:b});return}
+QP=new YT.Player("qyt",{width:"100%",height:"100%",videoId:c.v,playerVars:{playsinline:1,rel:0,start:Math.floor(a),end:Math.ceil(b)},
+events:{onReady:function(e){e.target.playVideo()},onStateChange:function(e){if(e.data===1&&QP.getPlaybackRate&&QP.getPlaybackRate()!==QRATE)QP.setPlaybackRate(QRATE)}}});
+});
+}
+function pickTyped(val){
+if(S.lock)return;var it=S.queue[0],w=it.w;
+if(val!==null&&!String(val).trim()){toast("請先輸入單字");return}
+S.lock=true;var ok=val!==null&&nz(val)===nz(w.w),inp=$("dans");
+if(inp){inp.disabled=true;inp.style.borderColor=ok?"var(--good)":"var(--bad)"}
+lisScore(it,ok);
+var ex=it.t==="clip"?'<div class="mean" style="margin-top:8px">'+esc(w.c.t||w.e)+'</div>':"";
+if(ok){S.done++;bar();mas("😍");$("slot").innerHTML='<div class="mean" style="color:var(--accent);font-weight:700">✓ '+esc(w.w)+'</div>'+ex;setTimeout(next,ex?2400:900)}
+else{mas("😵");requeue(it);$("slot").innerHTML='<div class="mean" style="color:var(--bad);font-weight:700">✕ 正確答案：'+esc(w.w)+'</div>'+ex+'<button class="nx" data-nx="1">NEXT ▸</button>'}
+}
+document.addEventListener("keydown",function(e){if(e.key==="Enter"&&e.target&&e.target.id==="dans"&&S)pickTyped(e.target.value)});
 function mk(it){
 var key=(it.t==="zh2en"||it.t==="zh2au")?"w":"m",seen={},o=[];seen[it.w[key]]=1;
 shuf(words).forEach(function(x){if(o.length<2&&!seen[x[key]]){seen[x[key]]=1;o.push(x)}});
@@ -240,23 +273,33 @@ it.opts=shuf([it.w].concat(o));it.ai=it.opts.indexOf(it.w);it.key=key;
 }
 function mas(e){$("mas").textContent=e}
 function bar(){$("qfill").style.width=(S.total?S.done/S.total*100:0)+"%"}
-function startQuiz(g){
+function startQuiz(g,lis){
 var ws=inG(g);
 if(ws.length<1){toast("這塊地還沒有單字");return}
 if(words.length<3){toast("單字庫至少要有 3 個單字才能出題");return}
 var isNew=(prog[g]||0)===0,qs=[];
-ws.forEach(function(w){shuf(TYPES).slice(0,2).forEach(function(t){qs.push({k:"q",w:w,t:t})})});
+ws.forEach(function(w){
+var a=shuf(pool(w,lis)),weak=(w.lw||0)>0;
+if(weak&&!lis)a.sort(function(x,y){return(isLis(y)?1:0)-(isLis(x)?1:0)});
+a.slice(0,weak?3:2).forEach(function(t){qs.push({k:"q",w:w,t:t})})});
 qs=shuf(qs);var seen={},q=[];
 qs.forEach(function(it){if(isNew&&!seen[it.w.id]){seen[it.w.id]=1;q.push({k:"intro",w:it.w})}q.push(it)});
-S={g:g,queue:q,done:0,total:qs.length,lock:false};
+S={g:g,lis:!!lis,queue:q,done:0,total:qs.length,lock:false};try{YTP.pauseVideo()}catch(e){}
 $("modal").innerHTML="";$("quiz").hidden=false;document.body.style.overflow="hidden";
-$("qt").textContent="地塊 "+(g+1);bar();show();
+$("qt").textContent="地塊 "+(g+1)+(lis?" 🎧 聽力":"");bar();show();
 }
 function show(){
-var it=S.queue[0];S.lock=false;mas("🐥");var w=it.w,h;
+var it=S.queue[0];S.lock=false;stopClip();$("qclip").hidden=true;mas("🐥");var w=it.w,h;
 if(it.k==="intro"){
 h='<div class="tag">新單字</div><div class="qtop"><div class="qw">'+esc(w.w)+'<button class="spk" data-sp="w" aria-label="發音">🔊</button></div><div>'+esc(w.m)+'</div>'+(w.e?'<div class="hint">'+esc(w.e)+'</div>':'')+'<button class="btn ghost" data-story="'+w.id+'">🎬 諧音梗短劇</button></div><button class="nx" data-nx="1">NEXT ▸</button>';
 $("qcard").innerHTML=h;setTimeout(function(){speak(w.w)},200);return}
+if(it.t==="dict"||it.t==="clip"){
+var tp;
+if(it.t==="dict")tp='<button class="spk big" data-sp="w" aria-label="播放發音">🔊</button><button class="btn ghost" data-spslow="1">🐢 慢速播放</button><div class="hint">聽發音，輸入單字</div>';
+else{$("qclip").hidden=false;tp='<div class="hint">聽原影片的這一句，補上缺少的單字</div><div class="row" style="justify-content:center;margin:0"><button class="btn" data-clip="1">▶ 播放原音</button><button class="btn ghost" data-clip="0.75">🐢 慢速</button></div><div class="qw" style="font-family:inherit;font-size:1.15rem;line-height:1.7;color:var(--ink)">'+esc(blankOf(w))+'</div><div class="hint">'+esc(w.m)+'</div>'}
+$("qcard").innerHTML='<div class="qtop">'+tp+'</div><div class="opts"><input id="dans" placeholder="輸入你聽到的單字" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" style="text-align:center;font-size:1.15rem;margin:0"><button class="opt" data-dok="1">確認</button><button class="opt unsure" data-o="-1">我不確定</button></div><div id="slot"></div>';
+if(it.t==="dict")setTimeout(function(){speak(w.w)},200);
+return}
 if(!it.opts)mk(it);
 var top="";
 if(it.t==="en2zh")top='<div class="qw">'+esc(w.w)+'<button class="spk" data-sp="w" aria-label="發音">🔊</button></div>';
@@ -268,13 +311,13 @@ $("qcard").innerHTML='<div class="qtop">'+top+'</div><div class="opts">'+labels.
 if(it.t==="en2zh"||it.t==="au2zh")setTimeout(function(){speak(w.w)},200);
 }
 function pick(i){
+var t0=S.queue[0].t;if(t0==="dict"||t0==="clip"){pickTyped(null);return}
 if(S.lock)return;S.lock=true;
 var it=S.queue[0],ok=i===it.ai,bs=document.querySelectorAll(".opt");
 bs.forEach(function(b){var j=+b.dataset.o;if(j===it.ai){b.classList.add("good");b.firstChild.textContent="✓"}if(j===i&&!ok&&i>=0){b.classList.add("wrong");b.firstChild.textContent="✕"}});
-if(ok){S.done++;bar();mas("😍");setTimeout(next,850)}
+lisScore(it,ok);if(ok){S.done++;bar();mas("😍");setTimeout(next,850)}
 else{mas("😵");
-var alt=shuf(TYPES.filter(function(t){return t!==it.t}))[0],n={k:"q",w:it.w,t:alt};
-S.queue.splice(Math.min(S.queue.length,4),0,n);
+requeue(it);
 $("slot").innerHTML='<button class="nx" data-nx="1">NEXT ▸</button>';}
 }
 function next(){S.queue.shift();if(!S.queue.length)finish();else show()}
@@ -283,7 +326,7 @@ var g=S.g,p=Math.min(MAX,(prog[g]||0)+1);prog[g]=p;save();mas("🥳");
 $("qfill").style.width="100%";
 $("qcard").innerHTML='<div class="qtop"><div class="win">・播種成功・</div><div style="font-size:3rem">'+EM[p]+'</div>'+dots(p)+'<div class="mean">'+(p>=MAX?'這塊地完成了！':'地塊 '+(g+1)+' 已澆水 '+p+'/'+MAX+' 次')+'</div></div><button class="nx" data-qclose="1">完成</button>';
 }
-function quitQuiz(){$("quiz").hidden=true;document.body.style.overflow="";S=null;render();renderList()}
+function quitQuiz(){stopClip();$("qclip").hidden=true;$("quiz").hidden=true;document.body.style.overflow="";S=null;render();renderList()}
 
 /* story */
 function storyPrompt(w,old){return `你是英文單字記憶短劇的編劇。為單字「${w.w}」（中文意思：${w.m}）創作一個諧音梗短劇：找出這個英文單字的發音聽起來像哪個中文詞語或短句（繁體中文，台灣口語），再編成 4 到 5 句的角色對白，最後一句要自然地說出那個諧音，讓人一聽就聯想到英文發音。對白要有趣、有畫面感，每句不超過 18 個字。${old?`之前用過的諧音是「${old}」，請換一個不同的。`:""}只輸出 JSON，不要其他文字，格式：{"pun":"諧音的中文","ipa":"/音標/","pos":"詞性縮寫，如 n. v. adj.","scenes":[{"who":"一個角色 emoji","name":"角色名稱","line":"對白"}],"tip":"一句話說明諧音如何對應這個單字","video_prompt":"給 AI 影片生成工具的繁體中文分鏡提示詞：場景、角色、服裝、鏡頭、對白，最後加上字幕顯示單字、音標與中文意思"}。最後一句對白必須包含 pun 這個諧音。`}
@@ -329,7 +372,7 @@ var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=na
 function qc(v){return'"'+String(v||"").replace(/"/g,'""')+'"'}
 function ioAct(k){
 if(k==="exp")saveBlob(new Blob([JSON.stringify({app:"vocab-farm",v:3,words:words,prog:prog})],{type:"application/json"}),"vocab-backup-"+stamp()+".json");
-else if(k==="expcsv")saveBlob(new Blob(["\uFEFF"+"單字,中文意思,例句\r\n"+words.map(function(w){return[w.w,w.m,w.e].map(qc).join(",")}).join("\r\n")],{type:"text/csv"}),"vocab-"+stamp()+".csv");
+else if(k==="expcsv")saveBlob(new Blob(["\uFEFF"+"單字,中文意思,例句,影片ID,開始秒,結束秒\r\n"+words.map(function(w){return[w.w,w.m,w.e,w.c?w.c.v:"",w.c?w.c.s:"",w.c?w.c.e:""].map(qc).join(",")}).join("\r\n")],{type:"text/csv"}),"vocab-"+stamp()+".csv");
 else if(k==="clear"){if(!words.length){toast("單字庫已經是空的");return}if(confirm("確定清空全部 "+words.length+" 個單字和所有進度？此動作無法復原，建議先匯出備份。")){words=[];prog={};save();render();renderList();toast("已清空單字庫")}}
 else{var f=$("fileIn");f.value="";f.dataset.k=k;f.accept=k==="imp"?".json,application/json":".csv,.txt,text/csv,text/plain";f.click()}
 }
@@ -337,7 +380,7 @@ function importBackup(t){
 try{var d=JSON.parse(t);if(!d||!Array.isArray(d.words))throw 0;
 var n=d.words.filter(function(x){return x&&x.w&&x.m});
 if(!confirm("匯入會取代目前的 "+words.length+" 個單字和進度，改為備份裡的 "+n.length+" 個單字。繼續嗎？"))return;
-words=n.map(function(x,i){return{id:x.id||Date.now()+i,w:String(x.w),m:String(x.m),e:x.e?String(x.e):"",g:typeof x.g==="number"?x.g:Math.floor(i/10),s:x.s}});
+words=n.map(function(x,i){return{id:x.id||Date.now()+i,w:String(x.w),m:String(x.m),e:x.e?String(x.e):"",g:typeof x.g==="number"?x.g:Math.floor(i/10),s:x.s,c:x.c,lw:x.lw}});
 prog=d.prog&&typeof d.prog==="object"?d.prog:{};save();render();renderList();toast("已匯入 "+words.length+" 個單字");
 }catch(e){toast("這不是有效的備份檔")}
 }
@@ -359,7 +402,9 @@ if(!w||!m)return;
 if(i===0&&/^(word|english|單字|英文)$/i.test(w))return;
 if(seen[w.toLowerCase()]){skip++;return}
 seen[w.toLowerCase()]=1;var g=0;while(inG(g).length>=10)g++;
-words.push({id:Date.now()+add,w:w,m:m,e:e,g:g});add++;
+var nw={id:Date.now()+add,w:w,m:m,e:e,g:g},vv=(r[3]||"").trim(),s1=parseFloat(r[4]),e1=parseFloat(r[5]);
+if(vv&&!isNaN(s1)&&!isNaN(e1))nw.c={v:vv,s:s1,e:e1,t:e};
+words.push(nw);add++;
 });
 save();render();renderList();toast("新增 "+add+" 個單字"+(skip?"，略過重複 "+skip+" 個":""));
 }
@@ -412,9 +457,10 @@ return esc(p)}).join("");
 return'<div class="cue" data-i="'+i+'">'+(c.s>=0?'<button class="sk" data-seek="'+c.s+'" aria-label="跳到這句">▶</button>':"")+'<div class="ct">'+h+(c.z?'<div class="cz">'+esc(c.z)+'</div>':"")+'</div></div>'}).join("");
 }
 function vidId(u){var m=u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})/);return m?m[1]:(/^[A-Za-z0-9_-]{11}$/.test(u)?u:null)}
+var ytq=[];
 function loadYT(cb){
 if(window.YT&&YT.Player){cb();return}
-window.onYouTubeIframeAPIReady=cb;
+ytq.push(cb);window.onYouTubeIframeAPIReady=function(){var q=ytq;ytq=[];q.forEach(function(f){f()})};
 if(!$("ytapi")){var sc=document.createElement("script");sc.id="ytapi";sc.src="https://www.youtube.com/iframe_api";sc.onerror=function(){toast("無法載入 YouTube 播放器，請確認網路")};document.head.appendChild(sc)}
 }
 function loadVideo(id){
@@ -492,7 +538,7 @@ return(j[0]||[]).map(function(x){return x[0]||""}).join("")}catch(e){return""}
 }
 async function trAny(q){var a=await trM(q);return a||await trG(q)}
 function openWord(el){
-var w=el.dataset.w,i=+el.closest("[data-i]").dataset.i,sent=cues[i].t;VW={w:w,sent:sent};
+var w=el.dataset.w,i=+el.closest("[data-i]").dataset.i,sent=cues[i].t;VW={w:w,sent:sent,ci:i};
 try{YTP.pauseVideo()}catch(e){}
 var known=words.some(function(x){return x.w.toLowerCase()===w});
 sheet('<h2>'+esc(w)+'</h2><p class="mean" style="font-style:italic">'+esc(sent)+'</p><input id="vm" placeholder="中文意思（可修改）"><p class="hint" id="vtr">翻譯中…</p><p class="mean" id="vts" hidden></p><div class="row"><button class="btn ghost" data-vsay="1" aria-label="發音">🔊</button><button class="btn f" data-vadd="1">'+(known?"已在果園":"加入單字果園")+'</button></div><div class="row"><button class="btn ghost f" data-vtrs="1">翻譯整句</button><button class="btn ghost f" data-vgo="1">用 Google 翻譯查</button></div><div class="row"><button class="btn ghost f" data-vclose="1">繼續播放</button></div>');
@@ -527,7 +573,9 @@ function vAdd(){
 var m=$("vm").value.trim();if(!m){toast("請輸入中文意思");return}
 if(words.some(function(x){return x.w.toLowerCase()===VW.w})){toast("這個單字已經在單字庫了");return}
 var g=0;while(inG(g).length>=10)g++;
-words.push({id:Date.now(),w:VW.w,m:m,e:VW.sent,g:g});save();
+var nw={id:Date.now(),w:VW.w,m:m,e:VW.sent,g:g},cu=cues[VW.ci];
+if(cu&&cu.s>=0&&vid)nw.c={v:vid,s:cu.s,e:Math.min(cu.e>cu.s?cu.e:cu.s+5,cu.s+20),t:cu.t};
+words.push(nw);save();
 document.querySelectorAll('.wd[data-w="'+VW.w+'"]').forEach(function(x){x.classList.add("kw")});
 toast("已加入「"+VW.w+"」→ 地塊 "+(g+1));vResume();
 }
@@ -560,7 +608,7 @@ else if(d.sp)speak(S.queue[0].w.w);
 else if(d.spo)speak(S.queue[0].opts[+d.spo].w);
 else if(d.o!==undefined&&S)pick(+d.o);
 else if(d.nx)next();
-else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.vtrs)vTrs();else if(d.vgo)vGo();else if(d.edit)openEdit(d.edit,d.g);else if(d.esave)saveEdit(d.esave,d.eg);else if(d.eback!==undefined){if(d.eback==='')closeSheet();else openPlot(+d.eback)}else if(d.seek!==undefined)seek(+d.seek);
+else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.vtrs)vTrs();else if(d.vgo)vGo();else if(d.lis)startQuiz(+d.lis,true);else if(d.clip)clipPlay(parseFloat(d.clip));else if(d.dok)pickTyped($("dans").value);else if(d.spslow)speak(S.queue[0].w.w,"en-US",0.6);else if(d.edit)openEdit(d.edit,d.g);else if(d.esave)saveEdit(d.esave,d.eg);else if(d.eback!==undefined){if(d.eback==='')closeSheet();else openPlot(+d.eback)}else if(d.seek!==undefined)seek(+d.seek);
 });
 load();render();
 try{var sv=JSON.parse(localStorage.getItem("vocab-video")||"null");if(sv){vid=sv.vid||"";$("vurl").value=sv.url||"";$("sub").value=sv.sub||"";if($("sub").value.trim()){cues=parseSub($("sub").value);renderTr()}}}catch(e){}
