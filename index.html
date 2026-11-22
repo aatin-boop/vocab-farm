@@ -141,11 +141,12 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 <div class="bar"><button class="btn f" id="addOpen">＋ 新增單字</button></div>
 </div>
 <div id="vList" hidden>
-<div class="bar io"><button class="btn ghost" data-io="exp">匯出備份</button><button class="btn ghost" data-io="imp">匯入備份</button><button class="btn ghost" data-io="csv">匯入單字表</button><button class="btn ghost" data-io="expcsv">匯出 CSV</button><button class="btn ghost" data-io="clear" style="color:var(--bad);border-color:var(--bad)">清空全部單字</button></div>
+<div class="bar io"><button class="btn ghost" data-io="exp">匯出備份</button><button class="btn ghost" data-io="imp">匯入備份</button><button class="btn ghost" data-io="csv">匯入單字表</button><button class="btn ghost" data-io="expcsv">匯出 CSV</button><button class="btn ghost" data-io="upd">重新載入最新版</button><button class="btn ghost" data-io="clear" style="color:var(--bad);border-color:var(--bad)">清空全部單字</button></div>
 <input type="file" id="fileIn" hidden>
 <div style="padding:14px 12px 8px"><input id="q" placeholder="搜尋單字或意思" style="background:var(--surface)"></div>
 <ul id="list" style="padding:0 12px"></ul>
 <div class="panel" id="lEmpty" hidden>還沒有單字。</div>
+<p class="hint" style="text-align:center;padding:14px 12px 4px">版本 v3.3</p>
 </div>
 <div id="vVideo" hidden>
 <details class="vset" id="vset" open><summary>影片與字幕設定</summary>
@@ -373,6 +374,10 @@ function qc(v){return'"'+String(v||"").replace(/"/g,'""')+'"'}
 function ioAct(k){
 if(k==="exp")saveBlob(new Blob([JSON.stringify({app:"vocab-farm",v:3,words:words,prog:prog})],{type:"application/json"}),"vocab-backup-"+stamp()+".json");
 else if(k==="expcsv")saveBlob(new Blob(["\uFEFF"+"單字,中文意思,例句,影片ID,開始秒,結束秒\r\n"+words.map(function(w){return[w.w,w.m,w.e,w.c?w.c.v:"",w.c?w.c.s:"",w.c?w.c.e:""].map(qc).join(",")}).join("\r\n")],{type:"text/csv"}),"vocab-"+stamp()+".csv");
+else if(k==="upd"){var jobs=[];
+try{if(navigator.serviceWorker)jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(r){return r.unregister()}))}));
+if(window.caches)jobs.push(caches.keys().then(function(ks){return Promise.all(ks.map(function(x){return caches.delete(x)}))}))}catch(e){}
+Promise.all(jobs).then(function(){toast("正在載入最新版…（單字不會被清除）");setTimeout(function(){location.href=location.pathname+"?v="+Date.now()},700)})}
 else if(k==="clear"){if(!words.length){toast("單字庫已經是空的");return}if(confirm("確定清空全部 "+words.length+" 個單字和所有進度？此動作無法復原，建議先匯出備份。")){words=[];prog={};save();render();renderList();toast("已清空單字庫")}}
 else{var f=$("fileIn");f.value="";f.dataset.k=k;f.accept=k==="imp"?".json,application/json":".csv,.txt,text/csv,text/plain";f.click()}
 }
