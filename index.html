@@ -416,7 +416,7 @@ try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
 
 /* video */
-var cues=[],YTP=null,vInit=false,tick=null,curI=-1,pz=-1,VW=null,vid="";
+var cues=[],YTP=null,vInit=false,tick=null,curI=-1,pz=-1,lk=0,VW=null,vid="";
 function vsave(){try{localStorage.setItem("vocab-video",JSON.stringify({vid:vid,sub:$("sub").value,url:$("vurl").value}))}catch(e){}}
 function ts(h,m,s,ms){return(h?parseInt(h,10):0)*3600+(+m)*60+(+s)+parseFloat("0."+(ms||"0"))}
 function pTime(x){
@@ -482,14 +482,16 @@ return esc(p)}).join("")+(cues[i].z?'<div class="cz">'+esc(cues[i].z)+'</div>':"
 function startTick(){
 clearInterval(tick);
 tick=setInterval(function(){
-if(!YTP||!YTP.getCurrentTime||!cues.length||cues[0].s<0)return;
-var t=YTP.getCurrentTime(),i=-1;
-for(var k=0;k<cues.length;k++){if(cues[k].s<=t+0.15)i=k;else break}
-if(i!==curI){curI=i;setBar(i);var old=document.querySelector(".cue.cur");if(old)old.classList.remove("cur");
+if(!YTP||!YTP.getCurrentTime||!cues.length||cues[0].s<0||Date.now()<lk)return;
+var t=YTP.getCurrentTime(),pm=$("pz").checked,L=pm?0:0.15,i=-1;
+for(var k=0;k<cues.length;k++){if(cues[k].s<=t+L)i=k;else break}
+var playing=YTP.getPlayerState&&YTP.getPlayerState()===1;
+if(pm&&playing&&curI>=0&&i>curI&&pz!==curI){YTP.pauseVideo();YTP.seekTo(Math.max(cues[curI].s,cues[curI].e-0.05),true);pz=curI;lk=Date.now()+400;return}
+if(i!==curI){curI=i;pz=-1;setBar(i);var old=document.querySelector(".cue.cur");if(old)old.classList.remove("cur");
 var el=document.querySelector('.cue[data-i="'+i+'"]');
-if(el){el.classList.add("cur");if($("auto").checked)el.scrollIntoView({block:"center",behavior:"smooth"})}pz=-1}
-if($("pz").checked&&i>=0&&i!==pz&&cues[i].e>0&&t>=cues[i].e-0.15&&YTP.getPlayerState&&YTP.getPlayerState()===1){YTP.pauseVideo();pz=i}
-},150);
+if(el){el.classList.add("cur");if($("auto").checked)el.scrollIntoView({block:"center",behavior:"smooth"})}}
+if(pm&&playing&&i>=0&&i!==pz&&cues[i].e>0&&t>=cues[i].e-0.08){YTP.pauseVideo();pz=i;lk=Date.now()+300}
+},80);
 }
 function seek(t){pz=-1;try{YTP.seekTo(t,true);YTP.playVideo()}catch(e){}}
 function applySub(){
