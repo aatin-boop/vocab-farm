@@ -156,7 +156,7 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 <div class="row" style="margin-top:0"><button class="btn f" data-v="sub">套用字幕</button><button class="btn ghost" data-v="file">選擇字幕檔</button></div>
 <p class="hint">點字幕裡不熟的英文單字，就能查意思並加入果園。</p>
 </div></details>
-<div class="vsticky" id="vbox" hidden><div class="vp16"><div id="yt"></div></div><div class="nowbar hintx" id="nowbar" data-i="-1">字幕會顯示在這裡，點單字即可加入</div><label class="autol"><input type="checkbox" id="auto" checked>自動捲動到目前這句</label></div>
+<div class="vsticky" id="vbox" hidden><div class="vp16"><div id="yt"></div></div><div class="nowbar hintx" id="nowbar" data-i="-1">字幕會顯示在這裡，點單字即可加入</div><div class="autol"><label><input type="checkbox" id="auto" checked>自動捲動</label> <label style="margin-left:12px"><input type="checkbox" id="pz">每句播完暫停</label> <button class="btn ghost" data-replay="1" style="padding:3px 12px;font-size:.8rem;margin-left:8px">↻ 重播這句</button></div></div>
 <div id="tr"><div class="panel">載入影片並貼上字幕後，字幕會顯示在這裡。</div></div>
 </div>
 <input type="file" id="fileSub" accept=".srt,.vtt,.txt,.csv,.xlsx,text/plain" hidden>
@@ -416,7 +416,7 @@ try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}
 if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
 
 /* video */
-var cues=[],YTP=null,vInit=false,tick=null,curI=-1,VW=null,vid="";
+var cues=[],YTP=null,vInit=false,tick=null,curI=-1,pz=-1,VW=null,vid="";
 function vsave(){try{localStorage.setItem("vocab-video",JSON.stringify({vid:vid,sub:$("sub").value,url:$("vurl").value}))}catch(e){}}
 function ts(h,m,s,ms){return(h?parseInt(h,10):0)*3600+(+m)*60+(+s)+parseFloat("0."+(ms||"0"))}
 function pTime(x){
@@ -487,10 +487,11 @@ var t=YTP.getCurrentTime(),i=-1;
 for(var k=0;k<cues.length;k++){if(cues[k].s<=t+0.15)i=k;else break}
 if(i!==curI){curI=i;setBar(i);var old=document.querySelector(".cue.cur");if(old)old.classList.remove("cur");
 var el=document.querySelector('.cue[data-i="'+i+'"]');
-if(el){el.classList.add("cur");if($("auto").checked)el.scrollIntoView({block:"center",behavior:"smooth"})}}
-},300);
+if(el){el.classList.add("cur");if($("auto").checked)el.scrollIntoView({block:"center",behavior:"smooth"})}pz=-1}
+if($("pz").checked&&i>=0&&i!==pz&&cues[i].e>0&&t>=cues[i].e-0.15&&YTP.getPlayerState&&YTP.getPlayerState()===1){YTP.pauseVideo();pz=i}
+},150);
 }
-function seek(t){try{YTP.seekTo(t,true);YTP.playVideo()}catch(e){}}
+function seek(t){pz=-1;try{YTP.seekTo(t,true);YTP.playVideo()}catch(e){}}
 function applySub(){
 var t=$("sub").value;if(!t.trim()){toast("請先貼上字幕或選擇字幕檔");return}
 cues=parseSub(t);curI=-1;setBar(-1);renderTr();vsave();
@@ -608,8 +609,10 @@ else if(d.sp)speak(S.queue[0].w.w);
 else if(d.spo)speak(S.queue[0].opts[+d.spo].w);
 else if(d.o!==undefined&&S)pick(+d.o);
 else if(d.nx)next();
-else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.vtrs)vTrs();else if(d.vgo)vGo();else if(d.lis)startQuiz(+d.lis,true);else if(d.clip)clipPlay(parseFloat(d.clip));else if(d.dok)pickTyped($("dans").value);else if(d.spslow)speak(S.queue[0].w.w,"en-US",0.6);else if(d.edit)openEdit(d.edit,d.g);else if(d.esave)saveEdit(d.esave,d.eg);else if(d.eback!==undefined){if(d.eback==='')closeSheet();else openPlot(+d.eback)}else if(d.seek!==undefined)seek(+d.seek);
+else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.vtrs)vTrs();else if(d.vgo)vGo();else if(d.lis)startQuiz(+d.lis,true);else if(d.replay){if(curI>=0&&cues[curI])seek(cues[curI].s)}else if(d.clip)clipPlay(parseFloat(d.clip));else if(d.dok)pickTyped($("dans").value);else if(d.spslow)speak(S.queue[0].w.w,"en-US",0.6);else if(d.edit)openEdit(d.edit,d.g);else if(d.esave)saveEdit(d.esave,d.eg);else if(d.eback!==undefined){if(d.eback==='')closeSheet();else openPlot(+d.eback)}else if(d.seek!==undefined)seek(+d.seek);
 });
+try{$("pz").checked=localStorage.getItem("vocab-pz")==="1"}catch(e){}
+$("pz").addEventListener("change",function(){try{localStorage.setItem("vocab-pz",this.checked?"1":"0")}catch(e){}});
 load();render();
 try{var sv=JSON.parse(localStorage.getItem("vocab-video")||"null");if(sv){vid=sv.vid||"";$("vurl").value=sv.url||"";$("sub").value=sv.sub||"";if($("sub").value.trim()){cues=parseSub($("sub").value);renderTr()}}}catch(e){}
 })();
