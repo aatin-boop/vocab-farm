@@ -138,7 +138,7 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 </div>
 <div class="soil" id="soil"></div>
 <div class="panel" id="emptyF" hidden>還沒有地塊。每 10 個單字會種成一塊地，先新增單字吧。</div>
-<div class="bar"><button class="btn f" id="addOpen">＋ 新增單字</button></div>
+<div class="bar"><button class="btn f" id="addOpen">＋ 新增單字</button><button class="btn ghost f" id="revOpen">🔁 複習學過的單字</button></div>
 </div>
 <div id="vList" hidden>
 <div class="bar io"><button class="btn ghost" data-io="exp">匯出備份</button><button class="btn ghost" data-io="imp">匯入備份</button><button class="btn ghost" data-io="csv">匯入單字表</button><button class="btn ghost" data-io="expcsv">匯出 CSV</button><button class="btn ghost" data-io="upd">重新載入最新版</button><button class="btn ghost" data-io="clear" style="color:var(--bad);border-color:var(--bad)">清空全部單字</button></div>
@@ -146,7 +146,7 @@ nav button[aria-selected="true"] i{box-shadow:0 0 0 3px #7fdbe8}
 <div style="padding:14px 12px 8px"><input id="q" placeholder="搜尋單字或意思" style="background:var(--surface)"></div>
 <ul id="list" style="padding:0 12px"></ul>
 <div class="panel" id="lEmpty" hidden>還沒有單字。</div>
-<p class="hint" style="text-align:center;padding:14px 12px 4px">版本 v3.3</p>
+<p class="hint" style="text-align:center;padding:14px 12px 4px">版本 v3.4</p>
 </div>
 <div id="vVideo" hidden>
 <details class="vset" id="vset" open><summary>影片與字幕設定</summary>
@@ -274,20 +274,36 @@ it.opts=shuf([it.w].concat(o));it.ai=it.opts.indexOf(it.w);it.key=key;
 }
 function mas(e){$("mas").textContent=e}
 function bar(){$("qfill").style.width=(S.total?S.done/S.total*100:0)+"%"}
-function startQuiz(g,lis){
-var ws=inG(g);
-if(ws.length<1){toast("這塊地還沒有單字");return}
+function learned(){return words.filter(function(w){return(prog[w.g]||0)>=1})}
+function reviewSet(n){
+var a=shuf(learned());
+a.sort(function(x,y){var wx=(x.lw||0)>0?1:0,wy=(y.lw||0)>0?1:0;if(wx!==wy)return wy-wx;return(x.rt||0)-(y.rt||0)});
+return n>0?a.slice(0,n):a;
+}
+function openReview(){
+var L=learned(),n=L.length,weak=L.filter(function(w){return(w.lw||0)>0}).length;
+if(!n){toast("還沒有學過的單字，先到地塊練習一次");return}
 if(words.length<3){toast("單字庫至少要有 3 個單字才能出題");return}
-var isNew=(prog[g]||0)===0,qs=[];
+sheet('<h2>🔁 複習學過的單字</h2><p class="mean">已學過 '+n+' 個單字'+(weak?'，其中 '+weak+' 個聽力常答錯':'')+'</p><p class="hint" style="text-align:center">優先複習常答錯、最久沒複習的單字。答錯的題目會重複出現，直到答對。</p><div class="row"><button class="btn f" data-rv="10">10 個</button><button class="btn f" data-rv="20">20 個</button><button class="btn f" data-rv="0">全部 '+n+' 個</button></div><div class="row"><button class="btn ghost f" data-rv="10" data-rl="1">🎧 聽力 10 個</button><button class="btn ghost f" data-rv="20" data-rl="1">🎧 聽力 20 個</button></div><div class="row"><button class="btn ghost f" data-x="1">取消</button></div>');
+}
+function finishReview(){
+var now=Date.now();S.ws.forEach(function(w){w.rt=now});save();mas("🥳");$("qfill").style.width="100%";
+$("qcard").innerHTML='<div class="qtop"><div class="win">・複習完成・</div><div style="font-size:3rem">🔁</div><div class="mean">這一輪複習了 '+S.ws.length+' 個單字</div></div><button class="nx" data-again="1">再來一輪</button><button class="nx" data-qclose="1" style="background:none">完成</button>';
+}
+function startQuiz(g,lis,rv){
+var ws=g===-1?reviewSet(rv):inG(g);
+if(ws.length<1){toast(g===-1?"還沒有學過的單字，先到地塊練習一次":"這塊地還沒有單字");return}
+if(words.length<3){toast("單字庫至少要有 3 個單字才能出題");return}
+var isNew=g!==-1&&(prog[g]||0)===0,qs=[];
 ws.forEach(function(w){
 var a=shuf(pool(w,lis)),weak=(w.lw||0)>0;
 if(weak&&!lis)a.sort(function(x,y){return(isLis(y)?1:0)-(isLis(x)?1:0)});
-a.slice(0,weak?3:2).forEach(function(t){qs.push({k:"q",w:w,t:t})})});
+a.slice(0,g===-1?(weak?2:1):(weak?3:2)).forEach(function(t){qs.push({k:"q",w:w,t:t})})});
 qs=shuf(qs);var seen={},q=[];
 qs.forEach(function(it){if(isNew&&!seen[it.w.id]){seen[it.w.id]=1;q.push({k:"intro",w:it.w})}q.push(it)});
-S={g:g,lis:!!lis,queue:q,done:0,total:qs.length,lock:false};try{YTP.pauseVideo()}catch(e){}
+S={g:g,lis:!!lis,rv:rv||0,ws:ws,queue:q,done:0,total:qs.length,lock:false};try{YTP.pauseVideo()}catch(e){}
 $("modal").innerHTML="";$("quiz").hidden=false;document.body.style.overflow="hidden";
-$("qt").textContent="地塊 "+(g+1)+(lis?" 🎧 聽力":"");bar();show();
+$("qt").textContent=(g===-1?"🔁 複習":"地塊 "+(g+1))+(lis?" 🎧 聽力":"");bar();show();
 }
 function show(){
 var it=S.queue[0];S.lock=false;stopClip();$("qclip").hidden=true;mas("🐥");var w=it.w,h;
@@ -323,6 +339,7 @@ $("slot").innerHTML='<button class="nx" data-nx="1">NEXT ▸</button>';}
 }
 function next(){S.queue.shift();if(!S.queue.length)finish();else show()}
 function finish(){
+if(S.g===-1){finishReview();return}
 var g=S.g,p=Math.min(MAX,(prog[g]||0)+1);prog[g]=p;save();mas("🥳");
 $("qfill").style.width="100%";
 $("qcard").innerHTML='<div class="qtop"><div class="win">・播種成功・</div><div style="font-size:3rem">'+EM[p]+'</div>'+dots(p)+'<div class="mean">'+(p>=MAX?'這塊地完成了！':'地塊 '+(g+1)+' 已澆水 '+p+'/'+MAX+' 次')+'</div></div><button class="nx" data-qclose="1">完成</button>';
@@ -385,7 +402,7 @@ function importBackup(t){
 try{var d=JSON.parse(t);if(!d||!Array.isArray(d.words))throw 0;
 var n=d.words.filter(function(x){return x&&x.w&&x.m});
 if(!confirm("匯入會取代目前的 "+words.length+" 個單字和進度，改為備份裡的 "+n.length+" 個單字。繼續嗎？"))return;
-words=n.map(function(x,i){return{id:x.id||Date.now()+i,w:String(x.w),m:String(x.m),e:x.e?String(x.e):"",g:typeof x.g==="number"?x.g:Math.floor(i/10),s:x.s,c:x.c,lw:x.lw}});
+words=n.map(function(x,i){return{id:x.id||Date.now()+i,w:String(x.w),m:String(x.m),e:x.e?String(x.e):"",g:typeof x.g==="number"?x.g:Math.floor(i/10),s:x.s,c:x.c,lw:x.lw,rt:x.rt}});
 prog=d.prog&&typeof d.prog==="object"?d.prog:{};save();render();renderList();toast("已匯入 "+words.length+" 個單字");
 }catch(e){toast("這不是有效的備份檔")}
 }
@@ -597,7 +614,7 @@ if(n==="l")renderList();else if(n==="f")render();
 if(n==="v"&&!vInit){vInit=true;if(vid)loadVideo(vid)}
 }
 $("nF").onclick=function(){tab("f")};$("nL").onclick=function(){tab("l")};$("nV").onclick=function(){tab("v")};
-$("addOpen").onclick=openAdd;$("q").addEventListener("input",renderList);
+$("addOpen").onclick=openAdd;$("revOpen").onclick=openReview;$("q").addEventListener("input",renderList);
 $("qx").onclick=function(){if(confirm("離開練習？這次的進度不會計算。"))quitQuiz()};
 document.addEventListener("click",function(e){
 if(e.target.id==="bg"){closeSheet();return}
@@ -616,7 +633,7 @@ else if(d.sp)speak(S.queue[0].w.w);
 else if(d.spo)speak(S.queue[0].opts[+d.spo].w);
 else if(d.o!==undefined&&S)pick(+d.o);
 else if(d.nx)next();
-else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.vtrs)vTrs();else if(d.vgo)vGo();else if(d.lis)startQuiz(+d.lis,true);else if(d.replay){if(curI>=0&&cues[curI])seek(cues[curI].s)}else if(d.clip)clipPlay(parseFloat(d.clip));else if(d.dok)pickTyped($("dans").value);else if(d.spslow)speak(S.queue[0].w.w,"en-US",0.6);else if(d.edit)openEdit(d.edit,d.g);else if(d.esave)saveEdit(d.esave,d.eg);else if(d.eback!==undefined){if(d.eback==='')closeSheet();else openPlot(+d.eback)}else if(d.seek!==undefined)seek(+d.seek);
+else if(d.qclose)quitQuiz();else if(d.story)openStory(d.story);else if(d.sx)closeStory();else if(d.ssay)speak(ST.w.w);else if(d.sreplay)playStory();else if(d.regen)genStory(true);else if(d.vp)copyVp();else if(d.io)ioAct(d.io);else if(d.v)vAct(d.v);else if(d.vadd)vAdd();else if(d.vclose)vResume();else if(d.vsay)speak(VW.w);else if(d.vtrs)vTrs();else if(d.vgo)vGo();else if(d.lis)startQuiz(+d.lis,true);else if(d.rv!==undefined)startQuiz(-1,d.rl==="1",+d.rv);else if(d.again)startQuiz(-1,S.lis,S.rv);else if(d.replay){if(curI>=0&&cues[curI])seek(cues[curI].s)}else if(d.clip)clipPlay(parseFloat(d.clip));else if(d.dok)pickTyped($("dans").value);else if(d.spslow)speak(S.queue[0].w.w,"en-US",0.6);else if(d.edit)openEdit(d.edit,d.g);else if(d.esave)saveEdit(d.esave,d.eg);else if(d.eback!==undefined){if(d.eback==='')closeSheet();else openPlot(+d.eback)}else if(d.seek!==undefined)seek(+d.seek);
 });
 try{$("pz").checked=localStorage.getItem("vocab-pz")==="1"}catch(e){}
 $("pz").addEventListener("change",function(){try{localStorage.setItem("vocab-pz",this.checked?"1":"0")}catch(e){}});
